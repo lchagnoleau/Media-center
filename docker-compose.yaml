@@ -1,0 +1,294 @@
+version: '3'
+
+networks:
+  default:
+    external:
+      name: nginx-proxy
+
+services:
+  nginx-proxy:
+    container_name: nginx-proxy
+    hostname: nginx-proxy
+    image: jwilder/nginx-proxy
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - ${CONFIG}/nginx/certs:/etc/nginx/certs
+      - ${CONFIG}/nginx/vhost.d:/etc/nginx/vhost.d
+      - ${CONFIG}/nginx/share:/usr/share/nginx/html
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+    restart: unless-stopped
+
+  nginx-proxy-letsencrypt:
+    container_name: nginx-proxy-letsencrypt
+    hostname: nginx-proxy-letsencrypt
+    image: jrcs/letsencrypt-nginx-proxy-companion
+    depends_on:
+      - nginx-proxy
+    volumes:
+      - ${CONFIG}/nginx/certs:/etc/nginx/certs
+      - ${CONFIG}/nginx/vhost.d:/etc/nginx/vhost.d
+      - ${CONFIG}/nginx/share:/usr/share/nginx/html
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - DEFAULT_EMAIL=loic.chagnoleau@gmail.com
+      - NGINX_PROXY_CONTAINER=nginx-proxy
+    restart: unless-stopped
+
+  flood:
+    container_name: flood
+    hostname: flood
+    image: linuxserver/flood
+    depends_on:
+      - nginx-proxy
+      - nginx-proxy-letsencrypt
+    volumes:
+      - ${DATA}/downloads:/downloads
+      - ${DATA}/watched:/watched
+      - ${CONFIG}/flood:/config
+    expose:
+      - 3000
+    ports:
+      - 5000:5000
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - VIRTUAL_HOST=flood.${DOMAIN}
+      - VIRTUAL_PORT=3000
+      - LETSENCRYPT_HOST=flood.${DOMAIN}
+      - LETSENCRYPT_EMAIL=loic.chagnoleau@gmail.com
+    restart: unless-stopped
+
+  radarr:
+    container_name: radarr
+    hostname: radarr
+    image: linuxserver/radarr
+    depends_on:
+      - nginx-proxy
+      - nginx-proxy-letsencrypt
+      - flood
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DATA}:/data
+      - ${CONFIG}/radarr:/config
+    expose:
+      - 7878
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - VIRTUAL_HOST=radarr.${DOMAIN}
+      - VIRTUAL_PORT=7878
+      - LETSENCRYPT_HOST=radarr.${DOMAIN}
+      - LETSENCRYPT_EMAIL=loic.chagnoleau@gmail.com
+    restart: unless-stopped
+
+  sonarr:
+    container_name: sonarr
+    hostname: sonarr
+    image: linuxserver/sonarr
+    depends_on:
+      - nginx-proxy
+      - nginx-proxy-letsencrypt
+      - flood
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DATA}:/data
+      - ${CONFIG}/sonarr:/config
+    expose:
+      - 8989
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - VIRTUAL_HOST=sonarr.${DOMAIN}
+      - VIRTUAL_PORT=8989
+      - LETSENCRYPT_HOST=sonarr.${DOMAIN}
+      - LETSENCRYPT_EMAIL=loic.chagnoleau@gmail.com
+    restart: unless-stopped
+
+  lidarr:
+    container_name: lidarr
+    hostname: lidarr
+    image: linuxserver/lidarr
+    depends_on:
+      - nginx-proxy
+      - nginx-proxy-letsencrypt
+      - flood
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DATA}:/data
+      - ${CONFIG}/lidarr:/config
+    expose:
+      - 8686
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - VIRTUAL_HOST=lidarr.${DOMAIN}
+      - VIRTUAL_PORT=8686
+      - LETSENCRYPT_HOST=lidarr.${DOMAIN}
+      - LETSENCRYPT_EMAIL=loic.chagnoleau@gmail.com
+    restart: unless-stopped
+
+  ombi:
+    container_name: ombi
+    hostname: ombi
+    image: linuxserver/ombi
+    depends_on:
+      - nginx-proxy
+      - nginx-proxy-letsencrypt
+    volumes:
+      - ${CONFIG}/ombi:/config
+    expose:
+      - 3579
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - VIRTUAL_HOST=ombi.${DOMAIN}
+      - VIRTUAL_PORT=3579
+      - LETSENCRYPT_HOST=ombi.${DOMAIN}
+      - LETSENCRYPT_EMAIL=loic.chagnoleau@gmail.com
+    restart: unless-stopped
+
+  jackett:
+    container_name: jackett
+    hostname: jackett
+    image: linuxserver/jackett
+    depends_on:
+      - nginx-proxy
+      - nginx-proxy-letsencrypt
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${CONFIG}/jackett:/config
+    expose:
+      - 9117
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - VIRTUAL_HOST=jackett.${DOMAIN}
+      - VIRTUAL_PORT=9117
+      - LETSENCRYPT_HOST=jackett.${DOMAIN}
+      - LETSENCRYPT_EMAIL=loic.chagnoleau@gmail.com
+    restart: unless-stopped
+
+  plex:
+    image: plexinc/pms-docker
+    hostname: plex
+    container_name: plex
+    ports:
+      - 32400:32400/tcp
+      - 1900:1900/udp
+      - 3005:3005/tcp
+      - 5353:5353/udp
+      - 8324:8324/tcp
+      - 32410:32410/udp
+      - 32412-32414:32412-32414/udp
+      - 32469:32469/tcp
+    volumes:
+      - ${CONFIG}/plex:/config
+      - ${DATA}/tv:/data/tv
+      - ${DATA}/movies:/data/movies
+      - ${DATA}/music:/data/music
+    environment:
+      - PLEX_UID=${PUID}
+      - PLEX_GID=${PGID}
+      - TZ=${TZ}
+      - VIRTUAL_HOST=plex.${DOMAIN}
+      - VIRTUAL_PORT=32400
+      - LETSENCRYPT_HOST=plex.${DOMAIN}
+      - LETSENCRYPT_EMAIL=loic.chagnoleau@gmail.com
+    restart: unless-stopped
+
+  tautulli:
+    container_name: tautulli
+    hostname: tautulli
+    image: linuxserver/tautulli
+    depends_on:
+      - nginx-proxy
+      - nginx-proxy-letsencrypt
+      - plex
+    volumes:
+      - ${CONFIG}/tautulli:/config
+      - ${CONFIG}/plex/Library/Application\ Support/Plex\ Media\ Server/Logs/:/logs
+    expose:
+      - 8181
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - VIRTUAL_HOST=tautulli.${DOMAIN}
+      - VIRTUAL_PORT=8181
+      - LETSENCRYPT_HOST=tautulli.${DOMAIN}
+      - LETSENCRYPT_EMAIL=loic.chagnoleau@gmail.com
+    restart: unless-stopped
+
+  organizr:
+    container_name: organizr
+    hostname: organizr
+    image: linuxserver/organizr
+    depends_on:
+      - nginx-proxy
+      - nginx-proxy-letsencrypt
+      - plex
+    volumes:
+      - ${CONFIG}/organizr:/config
+    expose:
+      - 80
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - VIRTUAL_HOST=organizr.${DOMAIN}
+      - VIRTUAL_PORT=80
+      - LETSENCRYPT_HOST=organizr.${DOMAIN}
+      - LETSENCRYPT_EMAIL=loic.chagnoleau@gmail.com
+    restart: unless-stopped
+
+  git:
+    container_name: git
+    hostname: git.${DOMAIN}
+    image: gitlab/gitlab-ce:latest
+    depends_on:
+      - nginx-proxy
+      - nginx-proxy-letsencrypt
+    volumes:
+      - ${CONFIG}/git:/etc/gitlab
+      - ${CONFIG}/git/log:/var/log/gitlab
+      - ./data/git:/var/opt/gitlab
+    ports:
+      - 22:22
+    expose:
+      - 80
+    environment:
+      - GITLAB_OMNIBUS_CONFIG="external_url 'https://git.${DOMAIN}/'; gitlab_rails['lfs_enabled'] = true;"
+      - VIRTUAL_HOST=git.${DOMAIN}
+      - VIRTUAL_PORT=80
+      - LETSENCRYPT_HOST=git.${DOMAIN}
+      - LETSENCRYPT_EMAIL=loic.chagnoleau@gmail.com
+    restart: unless-stopped
+
+  # nextcloud:
+  #   container_name: nextcloud
+  #   hostname: nextcloud
+  #   image: linuxserver/nextcloud
+  #   depends_on:
+  #     - nginx-proxy
+  #     - nginx-proxy-letsencrypt
+  #   volumes:
+  #     - ${CONFIG}/nextcloud:/config
+  #     - ./data/nextcloud:/data
+  #   expose:
+  #     - 443
+  #   environment:
+  #     - PUID=998
+  #     - PGID=113
+  #     - VIRTUAL_HOST=nextcloud.${DOMAIN}
+  #     - VIRTUAL_PORT=443
+  #     - LETSENCRYPT_HOST=nextcloud.${DOMAIN}
+  #     - LETSENCRYPT_EMAIL=loic.chagnoleau@gmail.com
+  #   restart: unless-stopped
