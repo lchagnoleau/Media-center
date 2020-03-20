@@ -44,13 +44,10 @@ services:
       - nginx-proxy
       - nginx-proxy-letsencrypt
     volumes:
-      - ${DATA}/downloads:/downloads
-      - ${DATA}/watched:/watched
+      - ${DATA}:/data
       - ${CONFIG}/flood:/config
     expose:
       - 3000
-    ports:
-      - 5000:5000
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -65,6 +62,7 @@ services:
     container_name: radarr
     hostname: radarr
     image: linuxserver/radarr
+    tty: true
     depends_on:
       - nginx-proxy
       - nginx-proxy-letsencrypt
@@ -89,6 +87,7 @@ services:
     container_name: sonarr
     hostname: sonarr
     image: linuxserver/sonarr
+    tty: true
     depends_on:
       - nginx-proxy
       - nginx-proxy-letsencrypt
@@ -113,6 +112,7 @@ services:
     container_name: lidarr
     hostname: lidarr
     image: linuxserver/lidarr
+    tty: true
     depends_on:
       - nginx-proxy
       - nginx-proxy-letsencrypt
@@ -270,6 +270,28 @@ services:
       - VIRTUAL_PORT=80
       - LETSENCRYPT_HOST=git.${DOMAIN}
       - LETSENCRYPT_EMAIL=loic.chagnoleau@gmail.com
+    restart: unless-stopped
+
+  teamspeak:
+    container_name: teamspeak
+    hostname: teamspeak.${DOMAIN}
+    image: mbentley/teamspeak
+    network_mode: host
+    volumes:
+      - ${CONFIG}/teamspeak:/data
+    ports:
+      - 10011:10011
+      - 30033:30033
+      - 41144:41144
+    expose:
+      - 9987
+    environment:
+      - TS3SERVER_LICENSE=accept
+      - VIRTUAL_HOST=ts3.${DOMAIN}
+      - VIRTUAL_PORT=9987
+      - LETSENCRYPT_HOST=ts3.${DOMAIN}
+      - LETSENCRYPT_EMAIL=loic.chagnoleau@gmail.com
+
     restart: unless-stopped
 
   # nextcloud:
