@@ -1,316 +1,200 @@
-version: '3'
-
-networks:
-  default:
-    external:
-      name: nginx-proxy
-
+version: '3.4'
 services:
-  nginx-proxy:
-    container_name: nginx-proxy
-    hostname: nginx-proxy
-    image: jwilder/nginx-proxy
+  app:
+    image: 'jc21/nginx-proxy-manager:latest'
+    container_name: nginx
     ports:
-      - 80:80
-      - 443:443
-    volumes:
-      - ${CONFIG}/nginx/certs:/etc/nginx/certs
-      - ${CONFIG}/nginx/vhost.d:/etc/nginx/vhost.d
-      - ${CONFIG}/nginx/share:/usr/share/nginx/html
-      - /var/run/docker.sock:/tmp/docker.sock:ro
-    restart: unless-stopped
-
-  nginx-proxy-letsencrypt:
-    container_name: nginx-proxy-letsencrypt
-    hostname: nginx-proxy-letsencrypt
-    image: jrcs/letsencrypt-nginx-proxy-companion
-    depends_on:
-      - nginx-proxy
-    volumes:
-      - ${CONFIG}/nginx/certs:/etc/nginx/certs
-      - ${CONFIG}/nginx/vhost.d:/etc/nginx/vhost.d
-      - ${CONFIG}/nginx/share:/usr/share/nginx/html
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - '80:80'
+      - '443:443'
     environment:
-      - DEFAULT_EMAIL=loic.chagnoleau@gmail.com
-      - NGINX_PROXY_CONTAINER=nginx-proxy
-    restart: unless-stopped
-
-  flood:
-    container_name: flood
-    hostname: flood
-    image: linuxserver/flood
-    depends_on:
-      - nginx-proxy
-      - nginx-proxy-letsencrypt
+      DB_MYSQL_HOST: "db"
+      DB_MYSQL_PORT: 3306
+      DB_MYSQL_USER: "npm"
+      DB_MYSQL_PASSWORD: "npm"
+      DB_MYSQL_NAME: "npm"
     volumes:
-      - ${DATA}:/data
-      - ${CONFIG}/flood:/config
-    expose:
-      - 3000
+      - ${CONFIG}/nginx/data:/data
+      - ${CONFIG}/nginx/letsencrypt:/etc/letsencrypt
+
+  db:
+    image: 'jc21/mariadb-aria:latest'
     environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
-      - VIRTUAL_HOST=flood.${DOMAIN}
-      - VIRTUAL_PORT=3000
-      - LETSENCRYPT_HOST=flood.${DOMAIN}
-      - LETSENCRYPT_EMAIL=loic.chagnoleau@gmail.com
+      MYSQL_ROOT_PASSWORD: 'npm'
+      MYSQL_DATABASE: 'npm'
+      MYSQL_USER: 'npm'
+      MYSQL_PASSWORD: 'npm'
+    volumes:
+      - ${CONFIG}/nginx/data/mysql:/var/lib/mysql
+
+  vpn:
+    image: dperson/openvpn-client
+    container_name: vpn
+    cap_add:
+        - net_admin
+    volumes:
+        - ${CONFIG}/vpn:/vpn
+    environment:
+        - VPN_AUTH=${VPN_AUTH}
+        - TZ=${TZ}
+    ports:
+        - 8112:8112 #deluge
+        - 8080:8080 #sabnzbd
     restart: unless-stopped
 
-  radarr:
-    container_name: radarr
-    hostname: radarr
-    image: linuxserver/radarr
-    tty: true
-    depends_on:
-      - nginx-proxy
-      - nginx-proxy-letsencrypt
-      - flood
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - ${DATA}:/data
-      - ${CONFIG}/radarr:/config
-    expose:
-      - 7878
+  deluge: #8112
+    image: ghcr.io/linuxserver/deluge
+    container_name: deluge
+    network_mode: service:vpn
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
-      - VIRTUAL_HOST=radarr.${DOMAIN}
-      - VIRTUAL_PORT=7878
-      - LETSENCRYPT_HOST=radarr.${DOMAIN}
-      - LETSENCRYPT_EMAIL=loic.chagnoleau@gmail.com
+    volumes:
+      - ${CONFIG}/deluge:/config
+      - ${DATA}/media:/data
     restart: unless-stopped
 
-  sonarr:
-    container_name: sonarr
-    hostname: sonarr
-    image: linuxserver/sonarr
-    tty: true
-    depends_on:
-      - nginx-proxy
-      - nginx-proxy-letsencrypt
-      - flood
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - ${DATA}:/data
-      - ${CONFIG}/sonarr:/config
-    expose:
-      - 8989
+  sabnzbd:
+    image: ghcr.io/linuxserver/sabnzbd
+    container_name: sabnzbd
+    network_mode: service:vpn
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
-      - VIRTUAL_HOST=sonarr.${DOMAIN}
-      - VIRTUAL_PORT=8989
-      - LETSENCRYPT_HOST=sonarr.${DOMAIN}
-      - LETSENCRYPT_EMAIL=loic.chagnoleau@gmail.com
-    restart: unless-stopped
-
-  lidarr:
-    container_name: lidarr
-    hostname: lidarr
-    image: linuxserver/lidarr
-    tty: true
-    depends_on:
-      - nginx-proxy
-      - nginx-proxy-letsencrypt
-      - flood
     volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - ${DATA}:/data
-      - ${CONFIG}/lidarr:/config
-    expose:
-      - 8686
-    environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
-      - VIRTUAL_HOST=lidarr.${DOMAIN}
-      - VIRTUAL_PORT=8686
-      - LETSENCRYPT_HOST=lidarr.${DOMAIN}
-      - LETSENCRYPT_EMAIL=loic.chagnoleau@gmail.com
+      - ${CONFIG}/sabnzbd:/config
+      - ${DATA}/media:/data
     restart: unless-stopped
 
-  ombi:
-    container_name: ombi
-    hostname: ombi
-    image: linuxserver/ombi
-    depends_on:
-      - nginx-proxy
-      - nginx-proxy-letsencrypt
-    volumes:
-      - ${CONFIG}/ombi:/config
-    expose:
-      - 3579
-    environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
-      - VIRTUAL_HOST=ombi.${DOMAIN}
-      - VIRTUAL_PORT=3579
-      - LETSENCRYPT_HOST=ombi.${DOMAIN}
-      - LETSENCRYPT_EMAIL=loic.chagnoleau@gmail.com
-    restart: unless-stopped
-
-  jackett:
-    container_name: jackett
-    hostname: jackett
+  jackett: #9117
     image: linuxserver/jackett
-    depends_on:
-      - nginx-proxy
-      - nginx-proxy-letsencrypt
+    container_name: jackett
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - ${CONFIG}/jackett:/config
-    expose:
-      - 9117
+      - ${DATA}/downloads/torrent-blackhole:/downloads
+    environment:
+      - TZ=${TZ}
+      - PUID=${PUID}
+      - PGID=${PGID}
+    restart: unless-stopped
+
+  radarr: #7878
+    image: linuxserver/radarr
+    container_name: radarr
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DATA}/media:/data
+      - ${CONFIG}/radarr:/config
+    environment:
+      - TZ=${TZ}
+      - PUID=${PUID}
+      - PGID=${PGID}
+    restart: unless-stopped
+
+  sonarr: #8989
+    image: linuxserver/sonarr
+    container_name: sonarr
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DATA}/media:/data
+      - ${CONFIG}/sonarr:/config
+    environment:
+      - TZ=${TZ}
+      - PUID=${PUID}
+      - PGID=${PGID}
+    restart: unless-stopped
+
+  bazarr: #6767
+    image: linuxserver/bazarr
+    container_name: bazarr
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
-      - VIRTUAL_HOST=jackett.${DOMAIN}
-      - VIRTUAL_PORT=9117
-      - LETSENCRYPT_HOST=jackett.${DOMAIN}
-      - LETSENCRYPT_EMAIL=loic.chagnoleau@gmail.com
+      - UMASK_SET=022
+    volumes:
+      - ${CONFIG}/bazarr:/config
+      - ${DATA}/media:/data
     restart: unless-stopped
 
-  plex:
+  flaresolverr: #8191
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - LOG_HTML=${LOG_HTML:-false}
+      - CAPTCHA_SOLVER=${CAPTCHA_SOLVER:-none}
+    restart: unless-stopped 
+
+  plex: #32400
     image: plexinc/pms-docker
-    hostname: plex
     container_name: plex
-    ports:
-      - 32400:32400/tcp
-      - 1900:1900/udp
-      - 3005:3005/tcp
-      - 5353:5353/udp
-      - 8324:8324/tcp
-      - 32410:32410/udp
-      - 32412-32414:32412-32414/udp
-      - 32469:32469/tcp
     volumes:
       - ${CONFIG}/plex:/config
-      - ${DATA}/tv:/data/tv
-      - ${DATA}/movies:/data/movies
-      - ${DATA}/music:/data/music
+      - ${DATA}/media/tv:/data/tv
+      - ${DATA}/media/movies:/data/movies
+      - ${DATA}/media/music:/data/music
     environment:
+      - TZ=${TZ}
       - PLEX_UID=${PUID}
       - PLEX_GID=${PGID}
-      - TZ=${TZ}
-      - VIRTUAL_HOST=plex.${DOMAIN}
-      - VIRTUAL_PORT=32400
-      - LETSENCRYPT_HOST=plex.${DOMAIN}
-      - LETSENCRYPT_EMAIL=loic.chagnoleau@gmail.com
+      - PLEX_CLAIM=${PLEX_TOKEN}
+      - ADVERTISE_IP=plex.${DOMAIN}
     restart: unless-stopped
 
-  tautulli:
-    container_name: tautulli
-    hostname: tautulli
+  tautulli: #8181
     image: linuxserver/tautulli
-    depends_on:
-      - nginx-proxy
-      - nginx-proxy-letsencrypt
-      - plex
+    container_name: tautulli
     volumes:
       - ${CONFIG}/tautulli:/config
       - ${CONFIG}/plex/Library/Application\ Support/Plex\ Media\ Server/Logs/:/logs
-    expose:
-      - 8181
     environment:
+      - TZ=${TZ}
       - PUID=${PUID}
       - PGID=${PGID}
-      - TZ=${TZ}
-      - VIRTUAL_HOST=tautulli.${DOMAIN}
-      - VIRTUAL_PORT=8181
-      - LETSENCRYPT_HOST=tautulli.${DOMAIN}
-      - LETSENCRYPT_EMAIL=loic.chagnoleau@gmail.com
     restart: unless-stopped
 
-  organizr:
-    container_name: organizr
-    hostname: organizr
-    image: linuxserver/organizr
-    depends_on:
-      - nginx-proxy
-      - nginx-proxy-letsencrypt
-      - plex
-    volumes:
-      - ${CONFIG}/organizr:/config
-    expose:
-      - 80
-    environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
-      - VIRTUAL_HOST=organizr.${DOMAIN}
-      - VIRTUAL_PORT=80
-      - LETSENCRYPT_HOST=organizr.${DOMAIN}
-      - LETSENCRYPT_EMAIL=loic.chagnoleau@gmail.com
-    restart: unless-stopped
-
-  git:
-    container_name: git
-    hostname: git.${DOMAIN}
-    image: gitlab/gitlab-ce:latest
-    depends_on:
-      - nginx-proxy
-      - nginx-proxy-letsencrypt
-    volumes:
-      - ${CONFIG}/git:/etc/gitlab
-      - ${CONFIG}/git/log:/var/log/gitlab
-      - ./data/git:/var/opt/gitlab
-    ports:
-      - 22:22
-    expose:
-      - 80
-    environment:
-      - GITLAB_OMNIBUS_CONFIG="external_url 'https://git.${DOMAIN}/'; gitlab_rails['lfs_enabled'] = true;"
-      - VIRTUAL_HOST=git.${DOMAIN}
-      - VIRTUAL_PORT=80
-      - LETSENCRYPT_HOST=git.${DOMAIN}
-      - LETSENCRYPT_EMAIL=loic.chagnoleau@gmail.com
-    restart: unless-stopped
-
-  teamspeak:
+  teamspeak: #9987
+    image: teamspeak
     container_name: teamspeak
-    hostname: teamspeak.${DOMAIN}
-    image: mbentley/teamspeak
     network_mode: host
     volumes:
-      - ${CONFIG}/teamspeak:/data
-    ports:
-      - 10011:10011
-      - 30033:30033
-      - 41144:41144
-    expose:
-      - 9987
+      - ${CONFIG}/teamspeak:/var/ts3server/
     environment:
       - TS3SERVER_LICENSE=accept
-      - VIRTUAL_HOST=ts3.${DOMAIN}
-      - VIRTUAL_PORT=9987
-      - LETSENCRYPT_HOST=ts3.${DOMAIN}
-      - LETSENCRYPT_EMAIL=loic.chagnoleau@gmail.com
 
     restart: unless-stopped
 
-  # nextcloud:
-  #   container_name: nextcloud
-  #   hostname: nextcloud
-  #   image: linuxserver/nextcloud
-  #   depends_on:
-  #     - nginx-proxy
-  #     - nginx-proxy-letsencrypt
-  #   volumes:
-  #     - ${CONFIG}/nextcloud:/config
-  #     - ./data/nextcloud:/data
-  #   expose:
-  #     - 443
-  #   environment:
-  #     - PUID=998
-  #     - PGID=113
-  #     - VIRTUAL_HOST=nextcloud.${DOMAIN}
-  #     - VIRTUAL_PORT=443
-  #     - LETSENCRYPT_HOST=nextcloud.${DOMAIN}
-  #     - LETSENCRYPT_EMAIL=loic.chagnoleau@gmail.com
-  #   restart: unless-stopped
+  etesync: #3735
+    image: victorrds/etesync
+    container_name: etesync
+    environment:
+      - SUPER_USER=admin
+    volumes:
+      - ${DATA}/etesync:/data
+    restart: unless-stopped
+
+  ombi: #3579
+    image: ghcr.io/linuxserver/ombi
+    container_name: ombi
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${CONFIG}/ombi:/config
+    restart: unless-stopped
+
+  sftp:
+    image: atmoz/sftp
+    volumes:
+        - ${DATA}/media:/home/antares/media
+        - ${CONFIG}/sftp/ssh_host_ed25519_key:/etc/ssh/ssh_host_ed25519_key
+        - ${CONFIG}/sftp/ssh_host_rsa_key:/etc/ssh/ssh_host_rsa_key
+        - ${CONFIG}/sftp/users.conf:/etc/sftp/users.conf:ro
+        - ${CONFIG}/sftp/ssh_authorized_keys:/home/antares/.ssh/keys/:ro
+    ports:
+        - "2222:22"
+    restart: unless-stopped
